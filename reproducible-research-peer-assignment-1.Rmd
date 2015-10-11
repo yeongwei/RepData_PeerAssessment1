@@ -1,0 +1,248 @@
+---
+title: 'Reproducible Research : Activity Monitoring Data Analysis (Peer Assignment 1)'
+author: "Yeong Wei"
+date: "Sunday, September 13, 2015"
+output: html_document
+---
+
+# Introduction
+
+This document presents the analysis performed towards the [activity monitoring data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip). The data consist of 3 variables; **steps** records the number of steps taken in 5-minute interval; **date** records the date of the measurement instance recordd in YYYY-MM-DD format; **interval** records the identifier of the 5-minute interval. This document answers a series of questions along with the R Sripts used. Based on the analysis performed, simple conclusions are derived.
+
+# Analysis / Method
+
+## Preliminary
+
+1. Setting working directory.
+```{r}
+workingDir <- "D:/development/datasciencecoursera/5-reproducible-research/redocp1/";
+setwd(workingDir);
+```
+
+2. Setting download parameters.
+```{r}
+downloadUrl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip";
+downloadedFile <- "downloaded.zip";
+downloadMethod <- "curl";
+downloadMode <- "wb";
+```
+
+3. Library
+```{r}
+library(ggplot2);
+```
+
+## Loading and preprocssing the data
+
+1. Download file.
+```{r}
+if (!file.exists(downloadedFile)) {
+  downloadStatus <- download.file(url = downloadUrl, destfile = downloadedFile,
+    method = downloadMethod, mode = downloadMode);
+  if (downloadStatus == 0) {
+    print("File downloaded.")
+  }
+}
+```
+
+2. Handle CSV.
+```{r}
+currentDirectory <- "./";
+csvFile <- "activity.csv";
+
+targetDownloadedFile <- paste(getwd(), downloadedFile, sep = "/");
+targetCsvFile <- paste(getwd(), csvFile, sep = "/");
+
+if (!file.exists(targetCsvFile)) {
+  unzipStatus <- unzip(targetDownloadedFile);
+  if (file.exists(unzipStatus)) {
+    print("Downloaded file unziped.")
+  }
+}
+```
+
+3. Loading data.
+```{r}
+ACTIVITY_DATA <- read.csv(file = targetCsvFile, header = TRUE);
+```
+
+4. Enrich data with `dataTime` column.
+```{r}
+ACTIVITY_DATA$timeStr <- NA;
+
+# Interval 0 to 9
+ACTIVITY_DATA[which(ACTIVITY_DATA$interval < 10),]$timeStr <- 
+  paste(
+    paste("00", ACTIVITY_DATA[which(ACTIVITY_DATA$interval < 10),]$interval, sep = ":"),
+    "0", sep = "");
+# Interval 10 to 99
+ACTIVITY_DATA[which(ACTIVITY_DATA$interval >= 10 & ACTIVITY_DATA$interval < 100),]$timeStr <- 
+  paste(
+    "00", 
+    ACTIVITY_DATA[which(ACTIVITY_DATA$interval >= 10 & ACTIVITY_DATA$interval < 100),]$interval, 
+    sep = ":");
+# Interval 100 to 999
+ACTIVITY_DATA[which(ACTIVITY_DATA$interval >= 100 & ACTIVITY_DATA$interval < 1000),]$timeStr <- 
+  paste(
+    0,
+    paste(
+      substr(
+        ACTIVITY_DATA[which(ACTIVITY_DATA$interval >= 100 & ACTIVITY_DATA$interval < 1000),]$interval,
+        1, 1),
+      substr(
+        ACTIVITY_DATA[which(ACTIVITY_DATA$interval >= 100 & ACTIVITY_DATA$interval < 1000),]$interval,
+        2, 3), 
+      sep = ":"),
+    sep = ""); 
+# Interval 1000 to xyz
+ACTIVITY_DATA[which(ACTIVITY_DATA$interval >= 1000),]$timeStr <- paste(
+  substr(ACTIVITY_DATA[
+    which(ACTIVITY_DATA$interval >= 1000),]$interval, 1, 2),
+  substr(ACTIVITY_DATA[
+    which(ACTIVITY_DATA$interval >= 1000),]$interval, 3, 4), 
+  sep = ":");
+
+ACTIVITY_DATA$dateTimeStr <- paste(ACTIVITY_DATA$date, ACTIVITY_DATA$timeStr, sep = " ");
+
+# Assumed GMT time zone
+timeZone <- "GMT";
+dateTimeFormat <- "%Y-%m-%d %H:%M";
+
+ACTIVITY_DATA$dateTime <- strptime(as.character(ACTIVITY_DATA$dateTimeStr), 
+  format = dateTimeFormat, tz = timeZone);
+```
+
+5. Glance at data.
+```{r}
+class(ACTIVITY_DATA);
+summary(ACTIVITY_DATA);
+str(ACTIVITY_DATA);
+```
+
+## What is mean total number of steps taken per day?
+
+0. R Scripts
+```{r}
+ACTIVITY_DATA_STEPS_NO_NA <- 
+  ACTIVITY_DATA[which(!is.na(ACTIVITY_DATA$steps)), c("date", "steps")];
+```
+
+1. Calculate the total number of stepts taken per day.
+```{r}
+ACTIVITY_DATA_SUM <- aggregate(steps ~ date, data = ACTIVITY_DATA_STEPS_NO_NA, sum);
+head(ACTIVITY_DATA_SUM);
+```
+
+2. Histogram of the total number of steps taken each day.
+```{r}
+HIST <- ggplot(data = ACTIVITY_DATA_SUM, aes(ACTIVITY_DATA_SUM$steps));
+HIST <- HIST + geom_histogram(breaks = seq(0, 22000, by = 500));
+HIST <- HIST + labs(title = "Occurence of Total Number of Steps Taken");
+HIST <- HIST + labs(y = "Number of Occurence");
+HIST <- HIST + labs(x = "Total Number of Steps");
+print(HIST);
+```
+
+3. Mean and median number of steps taken per day.
+  + Mean number of steps taken per day.
+```{r}
+  ACTIVITY_DATA_MEAN <- aggregate(steps ~ date, data = ACTIVITY_DATA_STEPS_NO_NA, mean);
+  head(ACTIVITY_DATA_MEAN);
+```
+  + Mean number of steps taken per day.
+```{r}
+  ACTIVITY_DATA_MEDIAN <- aggregate(steps ~ date, data = ACTIVITY_DATA_STEPS_NO_NA, median);
+  head(ACTIVITY_DATA_MEDIAN);
+```
+
+## What is the average daily activity pattern?
+
+1. Make a time series plot (i.e. `type = "l"`) of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis).
+```{r}
+ACTIVITY_DATA_AVG_INTERVAL <- 
+  aggregate(
+    steps ~ interval, 
+    data = ACTIVITY_DATA[which(!is.na(ACTIVITY_DATA$steps)), c("interval", "steps")], 
+    FUN = mean);
+
+TIME_SERIES <- ggplot(
+  ACTIVITY_DATA, 
+  aes(ACTIVITY_DATA_AVG_INTERVAL$interval, ACTIVITY_DATA_AVG_INTERVAL$steps));
+TIME_SERIES <- TIME_SERIES + geom_line();
+TIME_SERIES <- TIME_SERIES + labs(title = "Average Number of Steps Time Series Plot")
+TIME_SERIES <- TIME_SERIES + labs(x = "Time Identifier")
+TIME_SERIES <- TIME_SERIES + labs(y = "Average Number of Steps")
+print(TIME_SERIES)
+```
+
+2. Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+```{r}
+ACTIVITY_DATA_AVG_INTERVAL[
+  ACTIVITY_DATA_AVG_INTERVAL$steps == max(ACTIVITY_DATA_AVG_INTERVAL$steps), ];
+```
+
+## Imputing missing values
+
+1. Calculate and report the total number of missing values in the dataset (i.e. the total number of rows with `NA`s)
+```{r}
+sum(!complete.cases(ACTIVITY_DATA$steps));
+```
+
+2. Devise a strategy for filling in all of the missing values in the dataset. The strategy does not need to be sophisticated. For example, you could use the mean/median for that day, or the mean for that 5-minute interval, etc.
+```{r}
+# Refer to section below.
+```
+
+3. Create a new dataset that is equal to the original dataset but with the missing data filled in.
+```{r}
+ACTIVITY_DATA2 <- ACTIVITY_DATA;
+ACTIVITY_DATA2[is.na(ACTIVITY_DATA2$steps), ]$steps <- mean(ACTIVITY_DATA2$steps, na.rm = TRUE)
+```
+
+4.Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+```{r}
+ACTIVITY_DATA_SUM2 <- aggregate(steps ~ date, data = ACTIVITY_DATA2, sum)
+HIST2 <- ggplot(
+  data = ACTIVITY_DATA_SUM2,
+  aes(ACTIVITY_DATA_SUM2$steps));
+HIST2 <- HIST2 + geom_histogram(breaks = seq(0, 22000, by = 500));
+HIST2 <- HIST2 + labs(title = "Occurence of Total Number of Steps Walked (New)");
+HIST2 <- HIST2 + labs(y = "Number of Occurence");
+HIST2 <- HIST2 + labs(x = "Total Number of Steps");
+print(HIST2);
+```
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+1. Create a new factor variable in the dataset with two levels - "weekday" and "weekend" indicating whether a given date is a weekday or weekend day.
+```{r}
+WEEKENDS <- c("Saturday", "Sunday");
+## where WEEKDAYS == !WEEKENDS
+```
+
+2.Make a panel plot containing a time series plot (i.e. `type` = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis). See the README file in the GitHub repository to see an example of what this plot should look like using simulated data.
+```{r}
+ACTIVITY_DATA_SUM_BY_DATE <- aggregate(steps ~ date, ACTIVITY_DATA2, sum);
+ACTIVITY_DATA_SUM_BY_DATE$date <- as.Date(ACTIVITY_DATA_SUM_BY_DATE$date);
+ACTIVITY_DATA_SUM_BY_DATE$day <- weekdays(as.Date(ACTIVITY_DATA_SUM_BY_DATE$date));
+ACTIVITY_DATA_SUM_BY_DATE$dayType <- NA;
+
+ACTIVITY_DATA_SUM_BY_DATE[
+  which(ACTIVITY_DATA_SUM_BY_DATE$day %in% c(WEEKENDS)), ]$dayType <- "WEEKENDS";
+ACTIVITY_DATA_SUM_BY_DATE[
+  which(!ACTIVITY_DATA_SUM_BY_DATE$day %in% c(WEEKENDS)), ]$dayType <- "WEEKDAYS";
+
+ACTIVITY_DATA_SUM_BY_DATE$dayType <- factor(ACTIVITY_DATA_SUM_BY_DATE$dayType);
+ACTIVITY_DATA_SUM_BY_DATE <- ACTIVITY_DATA_SUM_BY_DATE[, c("date", "dayType", "steps")];
+
+MULTI_PANEL2 <- ggplot(ACTIVITY_DATA_SUM_BY_DATE, aes(x = date, y = steps));
+MULTI_PANEL2 <- MULTI_PANEL2 + geom_line();
+MULTI_PANEL2 <- MULTI_PANEL2 + facet_wrap(~ dayType, ncol = 1)
+print(MULTI_PANEL2);
+```
+
+
+# Result / Conclusion
+1. Busy hour is around 500 to 1000. This could be due to need to get ready for the day.
+
+2. Weekdays have a higher rate of change of number of steps compared to weekends. This could be due to during weekdays people need to attend to various work matter which is not totally in their control. However, during weekends people are in control of their routines.
